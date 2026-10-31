@@ -136,6 +136,10 @@ class KVPoolWorker:
         self.use_compress = self.compress_ratios is not None
         self.dp_rank = parallel_config.data_parallel_rank
 
+        from vllm_ascend.ascend_config import get_ascend_config
+
+        self.use_c8_reshape = get_ascend_config().c8_enable_reshape_optim
+
         self._init_parallelism_info(model_config, parallel_config)
         self._init_kv_transfer_config(vllm_config, extra_config, use_layerwise, kv_cache_config)
         self._init_key_head_config(model_config, parallel_config)
@@ -411,9 +415,10 @@ class KVPoolWorker:
         real_backend = getattr(backend_module, backend_name)
 
         backend_kwargs = {}
-        # lazy_init is requested only for compressed models. Each backend owns
-        # the hardware/protocol checks that decide whether it can honor it.
-        backend_kwargs["lazy_init"] = self.use_compress
+        # lazy_init is requested for compressed models and for GLM-5.x SFA
+        # models with c8_enable_reshape_optim. Each backend owns the
+        # hardware/protocol checks that decide whether it can honor it.
+        backend_kwargs["lazy_init"] = self.use_compress or self.use_c8_reshape
         # The connector's extra_config (with MultiConnector the child's own
         # config, not the top-level one) carries the QoS the backends inject.
         backend_kwargs["extra_config"] = extra_config
